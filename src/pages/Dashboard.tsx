@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Package2, AlertTriangle, CheckCircle, ShoppingCart } from 'lucide-react';
@@ -71,7 +70,7 @@ const Dashboard = () => {
             <ShoppingCart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${totalInventoryValue.toFixed(2)}</div>
+            <div className="text-2xl font-bold">₹{totalInventoryValue.toFixed(2)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               Total stock value
             </p>
