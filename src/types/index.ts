@@ -25,3 +25,11 @@ export interface Bill {
   totalAmount: number;
   paid: boolean;
 }
+
+// Payment types
+export interface PaymentDetails {
+  cardNumber: string;
+  cardholderName: string;
+  expiryDate: string;
+  cvv: string;
+}

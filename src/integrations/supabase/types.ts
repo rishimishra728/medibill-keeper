@@ -9,7 +9,111 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      bill_items: {
+        Row: {
+          bill_id: string
+          created_at: string
+          id: string
+          medicine_id: string
+          price: number
+          quantity: number
+        }
+        Insert: {
+          bill_id: string
+          created_at?: string
+          id?: string
+          medicine_id: string
+          price: number
+          quantity: number
+        }
+        Update: {
+          bill_id?: string
+          created_at?: string
+          id?: string
+          medicine_id?: string
+          price?: number
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bill_items_bill_id_fkey"
+            columns: ["bill_id"]
+            isOneToOne: false
+            referencedRelation: "bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_items_medicine_id_fkey"
+            columns: ["medicine_id"]
+            isOneToOne: false
+            referencedRelation: "medicines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bills: {
+        Row: {
+          created_at: string
+          customer_name: string
+          date: string
+          id: string
+          paid: boolean
+          total_amount: number
+        }
+        Insert: {
+          created_at?: string
+          customer_name: string
+          date?: string
+          id?: string
+          paid?: boolean
+          total_amount: number
+        }
+        Update: {
+          created_at?: string
+          customer_name?: string
+          date?: string
+          id?: string
+          paid?: boolean
+          total_amount?: number
+        }
+        Relationships: []
+      }
+      medicines: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string | null
+          expiry_date: string
+          id: string
+          manufacturer: string | null
+          name: string
+          price: number
+          stock: number
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          expiry_date: string
+          id?: string
+          manufacturer?: string | null
+          name: string
+          price: number
+          stock?: number
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          expiry_date?: string
+          id?: string
+          manufacturer?: string | null
+          name?: string
+          price?: number
+          stock?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

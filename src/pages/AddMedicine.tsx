@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { toast } from '@/hooks/use-toast';
 
 const AddMedicine = () => {
   const { addMedicine } = useAppContext();
@@ -17,6 +18,7 @@ const AddMedicine = () => {
     category: '',
     manufacturer: '',
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMedicine({
@@ -25,36 +27,48 @@ const AddMedicine = () => {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Basic validation
     if (!medicine.name || !medicine.price || !medicine.stock || !medicine.expiryDate) {
-      alert('Please fill in all required fields');
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
       return;
     }
     
-    // Add the medicine
-    addMedicine({
-      name: medicine.name,
-      description: medicine.description,
-      price: parseFloat(medicine.price),
-      stock: parseInt(medicine.stock),
-      expiryDate: medicine.expiryDate,
-      category: medicine.category,
-      manufacturer: medicine.manufacturer,
-    });
+    setIsSubmitting(true);
     
-    // Reset the form
-    setMedicine({
-      name: '',
-      description: '',
-      price: '',
-      stock: '',
-      expiryDate: '',
-      category: '',
-      manufacturer: '',
-    });
+    try {
+      // Add the medicine
+      await addMedicine({
+        name: medicine.name,
+        description: medicine.description,
+        price: parseFloat(medicine.price),
+        stock: parseInt(medicine.stock),
+        expiryDate: medicine.expiryDate,
+        category: medicine.category,
+        manufacturer: medicine.manufacturer,
+      });
+      
+      // Reset the form
+      setMedicine({
+        name: '',
+        description: '',
+        price: '',
+        stock: '',
+        expiryDate: '',
+        category: '',
+        manufacturer: '',
+      });
+    } catch (error) {
+      console.error('Error adding medicine:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -95,7 +109,7 @@ const AddMedicine = () => {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="price">Price (USD)*</Label>
+                <Label htmlFor="price">Price (₹)*</Label>
                 <Input
                   id="price"
                   name="price"
@@ -159,18 +173,25 @@ const AddMedicine = () => {
             </div>
             
             <div className="flex justify-end space-x-2 pt-4">
-              <Button type="button" variant="outline" onClick={() => setMedicine({
-                name: '',
-                description: '',
-                price: '',
-                stock: '',
-                expiryDate: '',
-                category: '',
-                manufacturer: '',
-              })}>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setMedicine({
+                  name: '',
+                  description: '',
+                  price: '',
+                  stock: '',
+                  expiryDate: '',
+                  category: '',
+                  manufacturer: '',
+                })}
+                disabled={isSubmitting}
+              >
                 Reset
               </Button>
-              <Button type="submit">Add Medicine</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Adding...' : 'Add Medicine'}
+              </Button>
             </div>
           </form>
         </CardContent>

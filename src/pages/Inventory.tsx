@@ -24,7 +24,7 @@ import { Edit, Trash2, Search } from 'lucide-react';
 import { Medicine } from '@/types';
 
 const Inventory = () => {
-  const { medicines, updateMedicine, deleteMedicine } = useAppContext();
+  const { medicines, updateMedicine, deleteMedicine, isLoading } = useAppContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -37,8 +37,8 @@ const Inventory = () => {
   const filteredMedicines = medicines.filter((medicine) => {
     return (
       medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      medicine.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      medicine.manufacturer.toLowerCase().includes(searchTerm.toLowerCase())
+      medicine.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      medicine.manufacturer?.toLowerCase().includes(searchTerm.toLowerCase())
     );
   });
 
@@ -77,6 +77,17 @@ const Inventory = () => {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-lg text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -112,12 +123,12 @@ const Inventory = () => {
                     <div>
                       {medicine.name}
                       <div className="md:hidden text-xs text-muted-foreground mt-1">
-                        {medicine.category} - ${medicine.price.toFixed(2)}
+                        {medicine.category} - ₹{medicine.price.toFixed(2)}
                       </div>
                     </div>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">{medicine.category}</TableCell>
-                  <TableCell className="hidden md:table-cell">${medicine.price.toFixed(2)}</TableCell>
+                  <TableCell className="hidden md:table-cell">₹{medicine.price.toFixed(2)}</TableCell>
                   <TableCell>
                     <span className={medicine.stock <= 10 ? 'text-red-500 font-bold' : ''}>
                       {medicine.stock}
@@ -194,7 +205,7 @@ const Inventory = () => {
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="price" className="text-right">
-                  Price
+                  Price (₹)
                 </Label>
                 <Input
                   id="price"

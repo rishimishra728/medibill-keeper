@@ -1,132 +1,20 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Medicine, Bill, BillItem } from '@/types';
+import { Medicine, Bill, BillItem, PaymentDetails } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from '@/hooks/use-toast';
-
-// Mock data
-const initialMedicines: Medicine[] = [
-  {
-    id: '1',
-    name: 'Paracetamol',
-    description: 'Pain reliever and fever reducer',
-    price: 5.99,
-    stock: 100,
-    expiryDate: '2025-12-31',
-    category: 'Pain Relief',
-    manufacturer: 'MedPharm',
-  },
-  {
-    id: '2',
-    name: 'Amoxicillin',
-    description: 'Antibiotic for bacterial infections',
-    price: 12.50,
-    stock: 50,
-    expiryDate: '2024-10-15',
-    category: 'Antibiotics',
-    manufacturer: 'HealthCare',
-  },
-  {
-    id: '3',
-    name: 'Loratadine',
-    description: 'Antihistamine for allergy relief',
-    price: 8.75,
-    stock: 75,
-    expiryDate: '2025-06-30',
-    category: 'Allergy',
-    manufacturer: 'AllergyCare',
-  },
-  {
-    id: '4',
-    name: 'Metformin',
-    description: 'Oral diabetes medicine',
-    price: 15.25,
-    stock: 40,
-    expiryDate: '2024-08-20',
-    category: 'Diabetes',
-    manufacturer: 'DiabetesCare',
-  },
-  {
-    id: '5',
-    name: 'Lisinopril',
-    description: 'ACE inhibitor for high blood pressure',
-    price: 18.99,
-    stock: 30,
-    expiryDate: '2024-12-15',
-    category: 'Blood Pressure',
-    manufacturer: 'CardioHealth',
-  },
-  {
-    id: '6',
-    name: 'Ibuprofen',
-    description: 'NSAID for pain and inflammation',
-    price: 6.50,
-    stock: 85,
-    expiryDate: '2025-04-10',
-    category: 'Pain Relief',
-    manufacturer: 'PainFree',
-  },
-  {
-    id: '7',
-    name: 'Cetirizine',
-    description: 'Antihistamine for allergies',
-    price: 9.25,
-    stock: 5,
-    expiryDate: '2024-11-22',
-    category: 'Allergy',
-    manufacturer: 'AllergyCare',
-  },
-];
-
-const initialBills: Bill[] = [
-  {
-    id: '1',
-    customerName: 'John Doe',
-    date: '2023-11-05',
-    items: [
-      {
-        medicineId: '1',
-        quantity: 2,
-        price: 5.99,
-        medicineName: 'Paracetamol',
-      },
-      {
-        medicineId: '3',
-        quantity: 1,
-        price: 8.75,
-        medicineName: 'Loratadine',
-      },
-    ],
-    totalAmount: 20.73,
-    paid: true,
-  },
-  {
-    id: '2',
-    customerName: 'Jane Smith',
-    date: '2023-11-10',
-    items: [
-      {
-        medicineId: '2',
-        quantity: 1,
-        price: 12.50,
-        medicineName: 'Amoxicillin',
-      },
-    ],
-    totalAmount: 12.50,
-    paid: false,
-  },
-];
+import { supabase } from '@/integrations/supabase/client';
 
 interface AppContextType {
   medicines: Medicine[];
-  addMedicine: (medicine: Omit<Medicine, 'id'>) => void;
-  updateMedicine: (medicine: Medicine) => void;
-  deleteMedicine: (id: string) => void;
+  addMedicine: (medicine: Omit<Medicine, 'id'>) => Promise<void>;
+  updateMedicine: (medicine: Medicine) => Promise<void>;
+  deleteMedicine: (id: string) => Promise<void>;
   
   bills: Bill[];
-  addBill: (bill: Omit<Bill, 'id'>) => void;
-  updateBill: (bill: Bill) => void;
-  deleteBill: (id: string) => void;
+  addBill: (bill: Omit<Bill, 'id'>) => Promise<void>;
+  updateBill: (bill: Bill) => Promise<void>;
+  deleteBill: (id: string) => Promise<void>;
   
   currentBill: {
     customerName: string;
@@ -137,17 +25,20 @@ interface AppContextType {
   removeItemFromBill: (medicineId: string) => void;
   updateBillItemQuantity: (medicineId: string, quantity: number) => void;
   clearCurrentBill: () => void;
-  generateBill: () => void;
+  generateBill: () => Promise<void>;
+  processBillPayment: (paymentDetails: PaymentDetails) => Promise<boolean>;
   
   getLowStockMedicines: () => Medicine[];
   getExpiringMedicines: () => Medicine[];
+  
+  isLoading: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [medicines, setMedicines] = useState<Medicine[]>(initialMedicines);
-  const [bills, setBills] = useState<Bill[]>(initialBills);
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [bills, setBills] = useState<Bill[]>([]);
   const [currentBill, setCurrentBill] = useState<{
     customerName: string;
     items: BillItem[];
@@ -155,86 +46,317 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     customerName: '',
     items: [],
   });
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load data from localStorage on initial render
+  // Fetch data from Supabase on initial render
   useEffect(() => {
-    const storedMedicines = localStorage.getItem('medicines');
-    const storedBills = localStorage.getItem('bills');
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        // Fetch medicines
+        const { data: medicinesData, error: medicinesError } = await supabase
+          .from('medicines')
+          .select('*');
+        
+        if (medicinesError) {
+          throw medicinesError;
+        }
+        
+        // Format medicine data to match our app's format
+        const formattedMedicines = medicinesData.map(med => ({
+          id: med.id,
+          name: med.name,
+          description: med.description || '',
+          price: Number(med.price),
+          stock: med.stock,
+          expiryDate: med.expiry_date,
+          category: med.category || '',
+          manufacturer: med.manufacturer || '',
+        }));
+        
+        setMedicines(formattedMedicines);
+        
+        // Fetch bills
+        const { data: billsData, error: billsError } = await supabase
+          .from('bills')
+          .select('*');
+        
+        if (billsError) {
+          throw billsError;
+        }
+        
+        // Fetch bill items for each bill
+        const billsWithItems = await Promise.all(
+          billsData.map(async (bill) => {
+            const { data: billItemsData, error: billItemsError } = await supabase
+              .from('bill_items')
+              .select('*, medicines(name)')
+              .eq('bill_id', bill.id);
+            
+            if (billItemsError) {
+              throw billItemsError;
+            }
+            
+            // Format bill items to match our app's format
+            const formattedItems = billItemsData.map(item => ({
+              medicineId: item.medicine_id,
+              quantity: item.quantity,
+              price: Number(item.price),
+              medicineName: item.medicines.name,
+            }));
+            
+            return {
+              id: bill.id,
+              customerName: bill.customer_name,
+              date: bill.date,
+              items: formattedItems,
+              totalAmount: Number(bill.total_amount),
+              paid: bill.paid,
+            };
+          })
+        );
+        
+        setBills(billsWithItems);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        toast({
+          title: "Data Loading Error",
+          description: "Failed to load data from the server.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
     
-    if (storedMedicines) {
-      setMedicines(JSON.parse(storedMedicines));
-    }
-    
-    if (storedBills) {
-      setBills(JSON.parse(storedBills));
-    }
+    fetchData();
   }, []);
 
-  // Save data to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem('medicines', JSON.stringify(medicines));
-  }, [medicines]);
-
-  useEffect(() => {
-    localStorage.setItem('bills', JSON.stringify(bills));
-  }, [bills]);
-
-  const addMedicine = (medicine: Omit<Medicine, 'id'>) => {
-    const newMedicine = { ...medicine, id: uuidv4() };
-    setMedicines((prev) => [...prev, newMedicine]);
-    toast({
-      title: "Medicine Added",
-      description: `${medicine.name} has been added to inventory.`,
-    });
+  const addMedicine = async (medicine: Omit<Medicine, 'id'>) => {
+    try {
+      const { data, error } = await supabase
+        .from('medicines')
+        .insert({
+          name: medicine.name,
+          description: medicine.description,
+          price: medicine.price,
+          stock: medicine.stock,
+          expiry_date: medicine.expiryDate,
+          category: medicine.category,
+          manufacturer: medicine.manufacturer,
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      const newMedicine: Medicine = {
+        id: data.id,
+        name: data.name,
+        description: data.description || '',
+        price: Number(data.price),
+        stock: data.stock,
+        expiryDate: data.expiry_date,
+        category: data.category || '',
+        manufacturer: data.manufacturer || '',
+      };
+      
+      setMedicines((prev) => [...prev, newMedicine]);
+      
+      toast({
+        title: "Medicine Added",
+        description: `${medicine.name} has been added to inventory.`,
+      });
+    } catch (error) {
+      console.error('Error adding medicine:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add medicine.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const updateMedicine = (medicine: Medicine) => {
-    setMedicines((prev) =>
-      prev.map((item) => (item.id === medicine.id ? medicine : item))
-    );
-    toast({
-      title: "Medicine Updated",
-      description: `${medicine.name} has been updated.`,
-    });
+  const updateMedicine = async (medicine: Medicine) => {
+    try {
+      const { error } = await supabase
+        .from('medicines')
+        .update({
+          name: medicine.name,
+          description: medicine.description,
+          price: medicine.price,
+          stock: medicine.stock,
+          expiry_date: medicine.expiryDate,
+          category: medicine.category,
+          manufacturer: medicine.manufacturer,
+        })
+        .eq('id', medicine.id);
+      
+      if (error) throw error;
+      
+      setMedicines((prev) =>
+        prev.map((item) => (item.id === medicine.id ? medicine : item))
+      );
+      
+      toast({
+        title: "Medicine Updated",
+        description: `${medicine.name} has been updated.`,
+      });
+    } catch (error) {
+      console.error('Error updating medicine:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update medicine.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const deleteMedicine = (id: string) => {
-    const medicine = medicines.find(m => m.id === id);
-    setMedicines((prev) => prev.filter((item) => item.id !== id));
-    toast({
-      title: "Medicine Deleted",
-      description: medicine ? `${medicine.name} has been removed.` : "Medicine has been removed.",
-      variant: "destructive",
-    });
+  const deleteMedicine = async (id: string) => {
+    try {
+      const medicine = medicines.find(m => m.id === id);
+      
+      const { error } = await supabase
+        .from('medicines')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      setMedicines((prev) => prev.filter((item) => item.id !== id));
+      
+      toast({
+        title: "Medicine Deleted",
+        description: medicine ? `${medicine.name} has been removed.` : "Medicine has been removed.",
+        variant: "destructive",
+      });
+    } catch (error) {
+      console.error('Error deleting medicine:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete medicine.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const addBill = (bill: Omit<Bill, 'id'>) => {
-    const newBill = { ...bill, id: uuidv4() };
-    setBills((prev) => [...prev, newBill]);
-    toast({
-      title: "Bill Generated",
-      description: `Bill for ${bill.customerName} has been created.`,
-    });
+  const addBill = async (bill: Omit<Bill, 'id'>) => {
+    try {
+      // Insert bill
+      const { data: billData, error: billError } = await supabase
+        .from('bills')
+        .insert({
+          customer_name: bill.customerName,
+          date: bill.date,
+          total_amount: bill.totalAmount,
+          paid: bill.paid,
+        })
+        .select()
+        .single();
+      
+      if (billError) throw billError;
+      
+      // Insert bill items
+      const billItemsToInsert = bill.items.map(item => ({
+        bill_id: billData.id,
+        medicine_id: item.medicineId,
+        quantity: item.quantity,
+        price: item.price,
+      }));
+      
+      const { error: itemsError } = await supabase
+        .from('bill_items')
+        .insert(billItemsToInsert);
+      
+      if (itemsError) throw itemsError;
+      
+      const newBill: Bill = {
+        id: billData.id,
+        customerName: billData.customer_name,
+        date: billData.date,
+        items: bill.items,
+        totalAmount: Number(billData.total_amount),
+        paid: billData.paid,
+      };
+      
+      setBills((prev) => [...prev, newBill]);
+      
+      toast({
+        title: "Bill Generated",
+        description: `Bill for ${bill.customerName} has been created.`,
+      });
+      
+      return billData.id;
+    } catch (error) {
+      console.error('Error adding bill:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate bill.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const updateBill = (bill: Bill) => {
-    setBills((prev) =>
-      prev.map((item) => (item.id === bill.id ? bill : item))
-    );
-    toast({
-      title: "Bill Updated",
-      description: `Bill for ${bill.customerName} has been updated.`,
-    });
+  const updateBill = async (bill: Bill) => {
+    try {
+      const { error } = await supabase
+        .from('bills')
+        .update({
+          customer_name: bill.customerName,
+          date: bill.date,
+          total_amount: bill.totalAmount,
+          paid: bill.paid,
+        })
+        .eq('id', bill.id);
+      
+      if (error) throw error;
+      
+      setBills((prev) =>
+        prev.map((item) => (item.id === bill.id ? bill : item))
+      );
+      
+      toast({
+        title: "Bill Updated",
+        description: `Bill for ${bill.customerName} has been updated.`,
+      });
+    } catch (error) {
+      console.error('Error updating bill:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update bill.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const deleteBill = (id: string) => {
-    const bill = bills.find(b => b.id === id);
-    setBills((prev) => prev.filter((item) => item.id !== id));
-    toast({
-      title: "Bill Deleted",
-      description: bill ? `Bill for ${bill.customerName} has been removed.` : "Bill has been removed.",
-      variant: "destructive",
-    });
+  const deleteBill = async (id: string) => {
+    try {
+      const bill = bills.find(b => b.id === id);
+      
+      // Due to cascading delete set up in the database,
+      // deleting the bill will also delete related bill items
+      const { error } = await supabase
+        .from('bills')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      setBills((prev) => prev.filter((item) => item.id !== id));
+      
+      toast({
+        title: "Bill Deleted",
+        description: bill ? `Bill for ${bill.customerName} has been removed.` : "Bill has been removed.",
+        variant: "destructive",
+      });
+    } catch (error) {
+      console.error('Error deleting bill:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete bill.",
+        variant: "destructive",
+      });
+    }
   };
 
   const setCustomerName = (name: string) => {
@@ -348,7 +470,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const generateBill = () => {
+  // Simulate a payment gateway for demo purposes
+  const processBillPayment = async (paymentDetails: PaymentDetails): Promise<boolean> => {
+    return new Promise((resolve) => {
+      // Simulate processing time
+      setTimeout(() => {
+        // Simulate 90% success rate
+        const isSuccessful = Math.random() < 0.9;
+        
+        if (isSuccessful) {
+          toast({
+            title: "Payment Successful",
+            description: "Your payment has been processed successfully.",
+          });
+        } else {
+          toast({
+            title: "Payment Failed",
+            description: "Your payment could not be processed. Please try again.",
+            variant: "destructive",
+          });
+        }
+        
+        resolve(isSuccessful);
+      }, 1500);
+    });
+  };
+
+  const generateBill = async () => {
     if (!currentBill.customerName) {
       toast({
         title: "Error",
@@ -376,28 +524,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Create a new bill
     const newBill: Omit<Bill, 'id'> = {
       customerName: currentBill.customerName,
-      date: new Date().toISOString().split('T')[0],
+      date: new Date().toISOString(),
       items: currentBill.items,
       totalAmount,
       paid: false,
     };
     
     // Add the bill
-    addBill(newBill);
+    const billId = await addBill(newBill);
     
     // Update the stock levels
-    currentBill.items.forEach((item) => {
+    for (const item of currentBill.items) {
       const medicine = medicines.find((m) => m.id === item.medicineId);
       if (medicine) {
-        updateMedicine({
+        await updateMedicine({
           ...medicine,
           stock: medicine.stock - item.quantity,
         });
       }
-    });
+    }
     
     // Clear the current bill
     clearCurrentBill();
+    
+    return billId;
   };
 
   const getLowStockMedicines = () => {
@@ -435,9 +585,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateBillItemQuantity,
         clearCurrentBill,
         generateBill,
+        processBillPayment,
         
         getLowStockMedicines,
         getExpiringMedicines,
+        
+        isLoading,
       }}
     >
       {children}

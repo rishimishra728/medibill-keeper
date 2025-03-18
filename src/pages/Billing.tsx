@@ -29,8 +29,10 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Printer, Trash2, Plus, FileText, Search } from 'lucide-react';
-import { Bill } from '@/types';
+import { Printer, Trash2, Plus, FileText, Search, CreditCard } from 'lucide-react';
+import { Bill, PaymentDetails } from '@/types';
+import PaymentModal from '@/components/PaymentModal';
+import { toast } from '@/hooks/use-toast';
 
 const Billing = () => {
   const {
@@ -45,6 +47,8 @@ const Billing = () => {
     generateBill,
     updateBill,
     deleteBill,
+    processBillPayment,
+    isLoading,
   } = useAppContext();
 
   const [selectedMedicineId, setSelectedMedicineId] = useState('');
@@ -52,6 +56,8 @@ const Billing = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
   const [isViewBillOpen, setIsViewBillOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [billToPay, setBillToPay] = useState<Bill | null>(null);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
@@ -95,8 +101,34 @@ const Billing = () => {
     setIsViewBillOpen(true);
   };
 
-  const handleMarkAsPaid = (bill: Bill) => {
-    updateBill({ ...bill, paid: true });
+  const handleGenerateBill = async () => {
+    const billId = await generateBill();
+    if (billId) {
+      // Find the newly created bill and open payment modal
+      const newBill = bills.find(b => b.id === billId);
+      if (newBill) {
+        setBillToPay(newBill);
+        setIsPaymentModalOpen(true);
+      }
+    }
+  };
+
+  const handlePaymentComplete = async (success: boolean) => {
+    if (success && billToPay) {
+      // Update bill as paid in database
+      await updateBill({
+        ...billToPay,
+        paid: true
+      });
+    }
+    
+    // Reset the bill to pay
+    setBillToPay(null);
+  };
+
+  const handlePayBill = (bill: Bill) => {
+    setBillToPay(bill);
+    setIsPaymentModalOpen(true);
   };
 
   const printBill = (bill: Bill) => {
@@ -146,8 +178,8 @@ const Billing = () => {
               <tr>
                 <td>${item.medicineName}</td>
                 <td>${item.quantity}</td>
-                <td>$${item.price.toFixed(2)}</td>
-                <td>$${(item.price * item.quantity).toFixed(2)}</td>
+                <td>₹${item.price.toFixed(2)}</td>
+                <td>₹${(item.price * item.quantity).toFixed(2)}</td>
               </tr>
             `
               )
@@ -156,7 +188,7 @@ const Billing = () => {
         </table>
         
         <div class="total">
-          <p>Total Amount: $${bill.totalAmount.toFixed(2)}</p>
+          <p>Total Amount: ₹${bill.totalAmount.toFixed(2)}</p>
           <p>Status: ${bill.paid ? 'Paid' : 'Unpaid'}</p>
         </div>
         
@@ -172,6 +204,17 @@ const Billing = () => {
     printWindow.document.close();
     printWindow.print();
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-lg text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -210,7 +253,7 @@ const Billing = () => {
                     <SelectContent>
                       {medicines.map((medicine) => (
                         <SelectItem key={medicine.id} value={medicine.id}>
-                          {medicine.name} - ${medicine.price.toFixed(2)} ({medicine.stock} left)
+                          {medicine.name} - ₹{medicine.price.toFixed(2)} ({medicine.stock} left)
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -277,10 +320,10 @@ const Billing = () => {
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
-                            ${item.price.toFixed(2)}
+                            ₹{item.price.toFixed(2)}
                           </TableCell>
                           <TableCell className="text-right">
-                            ${(item.price * item.quantity).toFixed(2)}
+                            ₹{(item.price * item.quantity).toFixed(2)}
                           </TableCell>
                           <TableCell>
                             <Button
@@ -304,14 +347,14 @@ const Billing = () => {
               
               <div className="flex justify-between items-center pt-2">
                 <div className="text-lg font-bold">
-                  Total: ${calculateTotal().toFixed(2)}
+                  Total: ₹{calculateTotal().toFixed(2)}
                 </div>
                 <div className="space-x-2">
                   <Button variant="outline" onClick={clearCurrentBill}>
                     Clear
                   </Button>
                   <Button
-                    onClick={generateBill}
+                    onClick={handleGenerateBill}
                     disabled={currentBill.items.length === 0 || !currentBill.customerName}
                   >
                     Generate Bill
@@ -357,7 +400,7 @@ const Billing = () => {
                           {new Date(bill.date).toLocaleDateString()}
                         </TableCell>
                         <TableCell className="text-right">
-                          ${bill.totalAmount.toFixed(2)}
+                          ₹{bill.totalAmount.toFixed(2)}
                         </TableCell>
                         <TableCell className="text-center">
                           <span
@@ -386,6 +429,15 @@ const Billing = () => {
                             >
                               <Printer className="h-4 w-4" />
                             </Button>
+                            {!bill.paid && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handlePayBill(bill)}
+                              >
+                                <CreditCard className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -452,10 +504,10 @@ const Billing = () => {
                       <TableCell>{item.medicineName}</TableCell>
                       <TableCell className="text-right">{item.quantity}</TableCell>
                       <TableCell className="text-right">
-                        ${item.price.toFixed(2)}
+                        ₹{item.price.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right">
-                        ${(item.price * item.quantity).toFixed(2)}
+                        ₹{(item.price * item.quantity).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -464,7 +516,7 @@ const Billing = () => {
               
               <div className="flex justify-between items-center pt-2">
                 <div className="text-lg font-bold">
-                  Total: ${selectedBill.totalAmount.toFixed(2)}
+                  Total: ₹{selectedBill.totalAmount.toFixed(2)}
                 </div>
                 <div className="space-x-2">
                   <Button
@@ -474,8 +526,12 @@ const Billing = () => {
                     <Printer className="h-4 w-4 mr-1" /> Print
                   </Button>
                   {!selectedBill.paid && (
-                    <Button onClick={() => handleMarkAsPaid(selectedBill)}>
-                      Mark as Paid
+                    <Button onClick={() => {
+                      setIsViewBillOpen(false);
+                      setBillToPay(selectedBill);
+                      setIsPaymentModalOpen(true);
+                    }}>
+                      <CreditCard className="h-4 w-4 mr-1" /> Pay Now
                     </Button>
                   )}
                 </div>
@@ -484,6 +540,17 @@ const Billing = () => {
           )}
         </DialogContent>
       </Dialog>
+      
+      {/* Payment Modal */}
+      {billToPay && (
+        <PaymentModal
+          open={isPaymentModalOpen}
+          onOpenChange={setIsPaymentModalOpen}
+          totalAmount={billToPay.totalAmount}
+          onPaymentComplete={handlePaymentComplete}
+          onProcessPayment={processBillPayment}
+        />
+      )}
     </div>
   );
 };
