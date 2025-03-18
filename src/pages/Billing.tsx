@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
@@ -79,7 +78,6 @@ const Billing = () => {
       price: medicine.price,
     });
     
-    // Reset the form
     setSelectedMedicineId('');
     setQuantity(1);
   };
@@ -104,7 +102,6 @@ const Billing = () => {
   const handleGenerateBill = async () => {
     const billId = await generateBill();
     if (billId) {
-      // Find the newly created bill and open payment modal
       const newBill = bills.find(b => b.id === billId);
       if (newBill) {
         setBillToPay(newBill);
@@ -115,14 +112,12 @@ const Billing = () => {
 
   const handlePaymentComplete = async (success: boolean) => {
     if (success && billToPay) {
-      // Update bill as paid in database
       await updateBill({
         ...billToPay,
         paid: true
       });
     }
     
-    // Reset the bill to pay
     setBillToPay(null);
   };
 
@@ -223,7 +218,6 @@ const Billing = () => {
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* New Bill Section */}
         <Card>
           <CardHeader>
             <CardTitle>Create New Bill</CardTitle>
@@ -365,7 +359,6 @@ const Billing = () => {
           </CardContent>
         </Card>
         
-        {/* Bill History Section */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle>Bill History</CardTitle>
@@ -454,7 +447,6 @@ const Billing = () => {
         </Card>
       </div>
       
-      {/* View Bill Dialog */}
       <Dialog open={isViewBillOpen} onOpenChange={setIsViewBillOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
@@ -541,7 +533,6 @@ const Billing = () => {
         </DialogContent>
       </Dialog>
       
-      {/* Payment Modal */}
       {billToPay && (
         <PaymentModal
           open={isPaymentModalOpen}

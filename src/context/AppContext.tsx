@@ -1,38 +1,8 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Medicine, Bill, BillItem, PaymentDetails } from '@/types';
+import { Medicine, Bill, BillItem, PaymentDetails, AppContextType } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-
-interface AppContextType {
-  medicines: Medicine[];
-  addMedicine: (medicine: Omit<Medicine, 'id'>) => Promise<void>;
-  updateMedicine: (medicine: Medicine) => Promise<void>;
-  deleteMedicine: (id: string) => Promise<void>;
-  
-  bills: Bill[];
-  addBill: (bill: Omit<Bill, 'id'>) => Promise<void>;
-  updateBill: (bill: Bill) => Promise<void>;
-  deleteBill: (id: string) => Promise<void>;
-  
-  currentBill: {
-    customerName: string;
-    items: BillItem[];
-  };
-  setCustomerName: (name: string) => void;
-  addItemToBill: (item: Omit<BillItem, 'medicineName'>) => void;
-  removeItemFromBill: (medicineId: string) => void;
-  updateBillItemQuantity: (medicineId: string, quantity: number) => void;
-  clearCurrentBill: () => void;
-  generateBill: () => Promise<void>;
-  processBillPayment: (paymentDetails: PaymentDetails) => Promise<boolean>;
-  
-  getLowStockMedicines: () => Medicine[];
-  getExpiringMedicines: () => Medicine[];
-  
-  isLoading: boolean;
-}
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -48,12 +18,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch data from Supabase on initial render
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        // Fetch medicines
         const { data: medicinesData, error: medicinesError } = await supabase
           .from('medicines')
           .select('*');
@@ -62,7 +30,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           throw medicinesError;
         }
         
-        // Format medicine data to match our app's format
         const formattedMedicines = medicinesData.map(med => ({
           id: med.id,
           name: med.name,
@@ -76,7 +43,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         setMedicines(formattedMedicines);
         
-        // Fetch bills
         const { data: billsData, error: billsError } = await supabase
           .from('bills')
           .select('*');
@@ -85,7 +51,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           throw billsError;
         }
         
-        // Fetch bill items for each bill
         const billsWithItems = await Promise.all(
           billsData.map(async (bill) => {
             const { data: billItemsData, error: billItemsError } = await supabase
@@ -97,7 +62,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               throw billItemsError;
             }
             
-            // Format bill items to match our app's format
             const formattedItems = billItemsData.map(item => ({
               medicineId: item.medicine_id,
               quantity: item.quantity,
@@ -240,9 +204,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const addBill = async (bill: Omit<Bill, 'id'>) => {
+  const addBill = async (bill: Omit<Bill, 'id'>): Promise<string | undefined> => {
     try {
-      // Insert bill
       const { data: billData, error: billError } = await supabase
         .from('bills')
         .insert({
@@ -256,7 +219,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       
       if (billError) throw billError;
       
-      // Insert bill items
       const billItemsToInsert = bill.items.map(item => ({
         bill_id: billData.id,
         medicine_id: item.medicineId,
@@ -294,6 +256,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         description: "Failed to generate bill.",
         variant: "destructive",
       });
+      return undefined;
     }
   };
 
@@ -333,8 +296,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const bill = bills.find(b => b.id === id);
       
-      // Due to cascading delete set up in the database,
-      // deleting the bill will also delete related bill items
       const { error } = await supabase
         .from('bills')
         .delete()
@@ -375,7 +336,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     
-    // Check if we have enough stock
     if (medicine.stock < item.quantity) {
       toast({
         title: "Error",
@@ -385,17 +345,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     
-    // Check if the item already exists in the bill
     const existingItemIndex = currentBill.items.findIndex(
       (i) => i.medicineId === item.medicineId
     );
     
     if (existingItemIndex !== -1) {
-      // Update the quantity of the existing item
       const updatedItems = [...currentBill.items];
       const newQuantity = updatedItems[existingItemIndex].quantity + item.quantity;
       
-      // Check if the new quantity exceeds the stock
       if (newQuantity > medicine.stock) {
         toast({
           title: "Error",
@@ -412,7 +369,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       
       setCurrentBill((prev) => ({ ...prev, items: updatedItems }));
     } else {
-      // Add a new item to the bill
       setCurrentBill((prev) => ({
         ...prev,
         items: [
@@ -445,7 +401,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     
-    // Check if we have enough stock
     if (medicine.stock < quantity) {
       toast({
         title: "Error",
@@ -470,12 +425,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // Simulate a payment gateway for demo purposes
   const processBillPayment = async (paymentDetails: PaymentDetails): Promise<boolean> => {
     return new Promise((resolve) => {
-      // Simulate processing time
       setTimeout(() => {
-        // Simulate 90% success rate
         const isSuccessful = Math.random() < 0.9;
         
         if (isSuccessful) {
@@ -496,14 +448,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const generateBill = async () => {
+  const generateBill = async (): Promise<string | undefined> => {
     if (!currentBill.customerName) {
       toast({
         title: "Error",
         description: "Please enter a customer name.",
         variant: "destructive",
       });
-      return;
+      return undefined;
     }
     
     if (currentBill.items.length === 0) {
@@ -512,16 +464,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         description: "Please add at least one item to the bill.",
         variant: "destructive",
       });
-      return;
+      return undefined;
     }
     
-    // Calculate the total amount
     const totalAmount = currentBill.items.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
     
-    // Create a new bill
     const newBill: Omit<Bill, 'id'> = {
       customerName: currentBill.customerName,
       date: new Date().toISOString(),
@@ -530,10 +480,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       paid: false,
     };
     
-    // Add the bill
     const billId = await addBill(newBill);
     
-    // Update the stock levels
     for (const item of currentBill.items) {
       const medicine = medicines.find((m) => m.id === item.medicineId);
       if (medicine) {
@@ -544,7 +492,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
     
-    // Clear the current bill
     clearCurrentBill();
     
     return billId;
