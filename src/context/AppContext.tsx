@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Medicine, Bill, BillItem, Customer, AppContextType } from '@/types';
 import { toast } from '@/hooks/use-toast';
@@ -486,7 +485,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setDiscountPercentage = (percentage: number) => {
-    // Ensure percentage is between 0 and 100
     const validPercentage = Math.min(Math.max(0, percentage), 100);
     setCurrentBill((prev) => ({ ...prev, discountPercentage: validPercentage }));
   };

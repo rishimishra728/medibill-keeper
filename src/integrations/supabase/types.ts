@@ -56,8 +56,9 @@ export type Database = {
           created_at: string
           customer_id: string | null
           customer_name: string
+          customer_phone: string | null
           date: string
-          discount_amount: number | null
+          discount_percentage: number | null
           id: string
           paid: boolean
           total_amount: number
@@ -66,8 +67,9 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           customer_name: string
+          customer_phone?: string | null
           date?: string
-          discount_amount?: number | null
+          discount_percentage?: number | null
           id?: string
           paid?: boolean
           total_amount: number
@@ -76,8 +78,9 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           customer_name?: string
+          customer_phone?: string | null
           date?: string
-          discount_amount?: number | null
+          discount_percentage?: number | null
           id?: string
           paid?: boolean
           total_amount?: number
