@@ -118,7 +118,7 @@ const Reports = () => {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${totalSales.toFixed(2)}</div>
+            <div className="text-2xl font-bold">₹{totalSales.toFixed(2)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               Lifetime sales revenue
             </p>
@@ -131,7 +131,7 @@ const Reports = () => {
             <Clock className="h-4 w-4 text-amber-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${unpaidAmount.toFixed(2)}</div>
+            <div className="text-2xl font-bold">₹{unpaidAmount.toFixed(2)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               From {unpaidBills.length} bills
             </p>
@@ -183,7 +183,7 @@ const Reports = () => {
                   <XAxis dataKey="name" />
                   <YAxis />
                   <Tooltip 
-                    formatter={(value) => [`$${value}`, 'Value']}
+                    formatter={(value) => [`₹${value}`, 'Value']}
                   />
                   <Bar dataKey="value" fill="#1976b2" />
                 </BarChart>
@@ -245,7 +245,7 @@ const Reports = () => {
                   <TableRow key={medicine.id}>
                     <TableCell className="font-medium">{medicine.name}</TableCell>
                     <TableCell className="text-right">{medicine.count}</TableCell>
-                    <TableCell className="text-right">${medicine.revenue.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">₹{medicine.revenue.toFixed(2)}</TableCell>
                   </TableRow>
                 ))
               ) : (
