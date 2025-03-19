@@ -39,6 +39,13 @@ export interface Customer {
   createdAt: string;
 }
 
+export interface PaymentDetails {
+  cardNumber: string;
+  cardholderName: string;
+  expiryDate: string;
+  cvv: string;
+}
+
 // AppContext types
 export interface AppContextType {
   medicines: Medicine[];
