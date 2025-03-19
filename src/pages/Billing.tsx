@@ -274,7 +274,6 @@ const Billing = () => {
     setCustomerSuggestions([]);
     setCustomerSearchTerm('');
     
-    // If customer has more than 5 visits, suggest a discount
     if (customer.visitCount > 5) {
       toast({
         title: "Frequent Customer",
@@ -354,7 +353,7 @@ const Billing = () => {
                   </Select>
                 </div>
                 
-                <div className="w-full sm:w-24">
+                <div className="w-full sm:w-36">
                   <Label htmlFor="quantity">Qty</Label>
                   <div className="flex items-center">
                     <Button 
@@ -372,7 +371,7 @@ const Billing = () => {
                       min="1"
                       value={quantity}
                       onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                      className="h-10 rounded-none text-center"
+                      className="h-10 rounded-none text-center w-full"
                     />
                     <Button 
                       type="button" 
@@ -672,7 +671,6 @@ const Billing = () => {
   );
 };
 
-// Bills list component
 const BillsList = ({ 
   bills, 
   onBillClick, 
