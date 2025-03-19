@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
@@ -38,7 +39,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Printer, Trash2, Plus, FileText, Search } from 'lucide-react';
+import { Printer, Trash2, Plus, FileText, Search, Phone } from 'lucide-react';
 import { Bill, Customer } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -52,7 +53,7 @@ const Billing = () => {
     currentBill,
     setCustomerName,
     setCustomerId,
-    setDiscountAmount,
+    setDiscountPercentage,
     addItemToBill,
     removeItemFromBill,
     updateBillItemQuantity,
@@ -73,6 +74,7 @@ const Billing = () => {
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [customerSuggestions, setCustomerSuggestions] = useState<Customer[]>([]);
   const [selectedTab, setSelectedTab] = useState('all');
+  const [customerPhone, setCustomerPhone] = useState('');
   
   const paidBills = bills.filter(bill => bill.paid);
   const unpaidBills = bills.filter(bill => !bill.paid);
@@ -121,7 +123,13 @@ const Billing = () => {
 
   const calculateTotal = () => {
     const subtotal = calculateSubtotal();
-    return Math.max(0, subtotal - currentBill.discountAmount);
+    const discountAmount = subtotal * (currentBill.discountPercentage / 100);
+    return Math.max(0, subtotal - discountAmount);
+  };
+
+  const calculateDiscountAmount = () => {
+    const subtotal = calculateSubtotal();
+    return subtotal * (currentBill.discountPercentage / 100);
   };
 
   const handleBillClick = (bill: Bill) => {
@@ -135,7 +143,7 @@ const Billing = () => {
 
   const confirmGenerateBill = async (isPaid: boolean) => {
     setIsPaidBillDialogOpen(false);
-    await generateBill(isPaid);
+    await generateBill(isPaid, customerPhone);
   };
 
   const handleMarkAsPaid = async (bill: Bill) => {
@@ -157,6 +165,9 @@ const Billing = () => {
   const printBill = (bill: Bill) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
+    
+    const discountAmount = bill.totalAmount * (bill.discountPercentage / 100);
+    const subtotal = bill.totalAmount + discountAmount;
     
     const content = `
       <!DOCTYPE html>
@@ -181,6 +192,7 @@ const Billing = () => {
         
         <div class="bill-info">
           <p><strong>Customer:</strong> ${bill.customerName}</p>
+          ${bill.customerPhone ? `<p><strong>Phone:</strong> ${bill.customerPhone}</p>` : ''}
           <p><strong>Date:</strong> ${new Date(bill.date).toLocaleDateString()}</p>
           <p><strong>Bill #:</strong> ${bill.id}</p>
         </div>
@@ -211,9 +223,9 @@ const Billing = () => {
         </table>
         
         <div class="total">
-          ${bill.discountAmount > 0 ? 
-            `<p>Subtotal: ₹${(bill.totalAmount + bill.discountAmount).toFixed(2)}</p>
-             <p>Discount: ₹${bill.discountAmount.toFixed(2)}</p>` : ''}
+          ${bill.discountPercentage > 0 ? 
+            `<p>Subtotal: ₹${subtotal.toFixed(2)}</p>
+             <p>Discount (${bill.discountPercentage}%): ₹${discountAmount.toFixed(2)}</p>` : ''}
           <p>Total Amount: ₹${bill.totalAmount.toFixed(2)}</p>
           <p>Status: ${bill.paid ? 'Paid' : 'Unpaid'}</p>
         </div>
@@ -238,6 +250,7 @@ const Billing = () => {
     if (value.length < 2) {
       setCustomerSuggestions([]);
       setCustomerId(undefined);
+      setCustomerPhone('');
       return;
     }
     
@@ -271,6 +284,7 @@ const Billing = () => {
   const selectCustomer = (customer: Customer) => {
     setCustomerName(customer.name);
     setCustomerId(customer.id);
+    setCustomerPhone(customer.phone || '');
     setCustomerSuggestions([]);
     setCustomerSearchTerm('');
     
@@ -306,31 +320,47 @@ const Billing = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="relative">
-                <Label htmlFor="customerName">Customer Name</Label>
-                <Input
-                  id="customerName"
-                  value={customerSearchTerm || currentBill.customerName}
-                  onChange={(e) => handleCustomerSearch(e.target.value)}
-                  placeholder="Enter or search customer name"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="relative">
+                  <Label htmlFor="customerName">Customer Name</Label>
+                  <Input
+                    id="customerName"
+                    value={customerSearchTerm || currentBill.customerName}
+                    onChange={(e) => handleCustomerSearch(e.target.value)}
+                    placeholder="Enter or search customer name"
+                  />
+                  
+                  {customerSuggestions.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg">
+                      {customerSuggestions.map((customer) => (
+                        <div
+                          key={customer.id}
+                          className="px-4 py-2 hover:bg-muted cursor-pointer flex justify-between"
+                          onClick={() => selectCustomer(customer)}
+                        >
+                          <span>{customer.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            Visits: {customer.visitCount}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 
-                {customerSuggestions.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg">
-                    {customerSuggestions.map((customer) => (
-                      <div
-                        key={customer.id}
-                        className="px-4 py-2 hover:bg-muted cursor-pointer flex justify-between"
-                        onClick={() => selectCustomer(customer)}
-                      >
-                        <span>{customer.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          Visits: {customer.visitCount}
-                        </span>
-                      </div>
-                    ))}
+                <div>
+                  <Label htmlFor="customerPhone">Phone Number</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="customerPhone"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      placeholder="Enter phone number"
+                      className="pl-10"
+                    />
                   </div>
-                )}
+                </div>
               </div>
               
               <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
@@ -462,7 +492,7 @@ const Billing = () => {
               {currentBill.items.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <Label htmlFor="discount">Discount Amount</Label>
+                    <Label htmlFor="discount">Discount Percentage (%)</Label>
                     <div className="text-sm text-muted-foreground">
                       Subtotal: ₹{calculateSubtotal().toFixed(2)}
                     </div>
@@ -471,11 +501,17 @@ const Billing = () => {
                     id="discount"
                     type="number"
                     min="0"
-                    step="0.01"
-                    value={currentBill.discountAmount}
-                    onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                    placeholder="Enter discount amount"
+                    max="100"
+                    step="1"
+                    value={currentBill.discountPercentage}
+                    onChange={(e) => setDiscountPercentage(parseFloat(e.target.value) || 0)}
+                    placeholder="Enter discount percentage"
                   />
+                  {currentBill.discountPercentage > 0 && (
+                    <div className="text-sm text-right text-muted-foreground">
+                      Discount Amount: ₹{calculateDiscountAmount().toFixed(2)}
+                    </div>
+                  )}
                 </div>
               )}
               
@@ -566,6 +602,12 @@ const Billing = () => {
                 <div>
                   <p className="text-sm text-muted-foreground">Customer</p>
                   <p className="font-medium">{selectedBill.customerName}</p>
+                  {selectedBill.customerPhone && (
+                    <>
+                      <p className="text-sm text-muted-foreground mt-1">Phone</p>
+                      <p className="font-medium">{selectedBill.customerPhone}</p>
+                    </>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Date</p>
@@ -610,13 +652,13 @@ const Billing = () => {
                 </TableBody>
               </Table>
               
-              {selectedBill.discountAmount > 0 && (
+              {selectedBill.discountPercentage > 0 && (
                 <div className="text-right space-y-1">
                   <p className="text-sm text-muted-foreground">
-                    Subtotal: ₹{(selectedBill.totalAmount + selectedBill.discountAmount).toFixed(2)}
+                    Subtotal: ₹{(selectedBill.totalAmount / (1 - selectedBill.discountPercentage / 100)).toFixed(2)}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Discount: ₹{selectedBill.discountAmount.toFixed(2)}
+                    Discount ({selectedBill.discountPercentage}%): ₹{((selectedBill.totalAmount / (1 - selectedBill.discountPercentage / 100)) * (selectedBill.discountPercentage / 100)).toFixed(2)}
                   </p>
                 </div>
               )}

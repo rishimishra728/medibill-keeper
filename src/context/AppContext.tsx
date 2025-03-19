@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Medicine, Bill, BillItem, Customer, AppContextType } from '@/types';
 import { toast } from '@/hooks/use-toast';
@@ -13,12 +14,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     customerName: string;
     customerId?: string;
     items: BillItem[];
-    discountAmount: number;
+    discountPercentage: number;
   }>({
     customerName: '',
     customerId: undefined,
     items: [],
-    discountAmount: 0,
+    discountPercentage: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -97,11 +98,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return {
               id: bill.id,
               customerName: bill.customer_name,
+              customerPhone: bill.customer_phone,
               customerId: bill.customer_id,
               date: bill.date,
               items: formattedItems,
               totalAmount: Number(bill.total_amount),
-              discountAmount: Number(bill.discount_amount || 0),
+              discountPercentage: Number(bill.discount_percentage || 0),
               paid: bill.paid,
             };
           })
@@ -343,10 +345,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .from('bills')
         .insert({
           customer_name: bill.customerName,
+          customer_phone: bill.customerPhone,
           customer_id: bill.customerId,
           date: bill.date,
           total_amount: bill.totalAmount,
-          discount_amount: bill.discountAmount,
+          discount_percentage: bill.discountPercentage,
           paid: bill.paid,
         })
         .select()
@@ -384,11 +387,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const newBill: Bill = {
         id: billData.id,
         customerName: billData.customer_name,
+        customerPhone: billData.customer_phone,
         customerId: billData.customer_id,
         date: billData.date,
         items: bill.items,
         totalAmount: Number(billData.total_amount),
-        discountAmount: Number(billData.discount_amount),
+        discountPercentage: Number(billData.discount_percentage),
         paid: billData.paid,
       };
       
@@ -417,9 +421,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .from('bills')
         .update({
           customer_name: bill.customerName,
+          customer_phone: bill.customerPhone,
           date: bill.date,
           total_amount: bill.totalAmount,
-          discount_amount: bill.discountAmount,
+          discount_percentage: bill.discountPercentage,
           paid: bill.paid,
         })
         .eq('id', bill.id);
@@ -480,8 +485,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentBill((prev) => ({ ...prev, customerId: id }));
   };
 
-  const setDiscountAmount = (amount: number) => {
-    setCurrentBill((prev) => ({ ...prev, discountAmount: amount }));
+  const setDiscountPercentage = (percentage: number) => {
+    // Ensure percentage is between 0 and 100
+    const validPercentage = Math.min(Math.max(0, percentage), 100);
+    setCurrentBill((prev) => ({ ...prev, discountPercentage: validPercentage }));
   };
 
   const addItemToBill = (item: Omit<BillItem, 'medicineName'>) => {
@@ -583,11 +590,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       customerName: '',
       customerId: undefined,
       items: [],
-      discountAmount: 0,
+      discountPercentage: 0,
     });
   };
 
-  const generateBill = async (isPaid: boolean): Promise<string | undefined> => {
+  const generateBill = async (isPaid: boolean, customerPhone?: string): Promise<string | undefined> => {
     if (!currentBill.customerName) {
       toast({
         title: "Error",
@@ -615,27 +622,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         customerId = existingCustomer.id;
       } else {
         try {
-          customerId = await addCustomer({ name: currentBill.customerName });
+          customerId = await addCustomer({ 
+            name: currentBill.customerName,
+            phone: customerPhone
+          });
         } catch (error) {
           console.error('Error creating customer:', error);
         }
       }
     }
     
-    const totalBeforeDiscount = currentBill.items.reduce(
+    const subtotal = currentBill.items.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
     
-    const totalAmount = Math.max(0, totalBeforeDiscount - currentBill.discountAmount);
+    const discountAmount = subtotal * (currentBill.discountPercentage / 100);
+    const totalAmount = Math.max(0, subtotal - discountAmount);
     
     const newBill: Omit<Bill, 'id'> = {
       customerName: currentBill.customerName,
+      customerPhone: customerPhone,
       customerId,
       date: new Date().toISOString(),
       items: currentBill.items,
       totalAmount,
-      discountAmount: currentBill.discountAmount,
+      discountPercentage: currentBill.discountPercentage,
       paid: isPaid,
     };
     
@@ -698,7 +710,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentBill,
         setCustomerName,
         setCustomerId,
-        setDiscountAmount,
+        setDiscountPercentage,
         addItemToBill,
         removeItemFromBill,
         updateBillItemQuantity,
