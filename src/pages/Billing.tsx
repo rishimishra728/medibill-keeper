@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
@@ -24,21 +25,23 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Printer, Trash2, Plus, FileText, Search, CreditCard } from 'lucide-react';
-import { Bill, PaymentDetails } from '@/types';
-import PaymentModal from '@/components/PaymentModal';
+import { Printer, Trash2, Plus, FileText, Search, AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from 'lucide-react';
+import { Bill, Customer } from '@/types';
 import { toast } from '@/hooks/use-toast';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const Billing = () => {
   const {
     medicines,
     bills,
+    customers,
     currentBill,
     setCustomerName,
+    setCustomerId,
+    setDiscountAmount,
     addItemToBill,
     removeItemFromBill,
     updateBillItemQuantity,
@@ -46,7 +49,7 @@ const Billing = () => {
     generateBill,
     updateBill,
     deleteBill,
-    processBillPayment,
+    getCustomerByName,
     isLoading,
   } = useAppContext();
 
@@ -55,15 +58,26 @@ const Billing = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
   const [isViewBillOpen, setIsViewBillOpen] = useState(false);
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [billToPay, setBillToPay] = useState<Bill | null>(null);
+  const [isPaidBillDialogOpen, setIsPaidBillDialogOpen] = useState(false);
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
+  const [customerSuggestions, setCustomerSuggestions] = useState<Customer[]>([]);
+  const [selectedTab, setSelectedTab] = useState('all');
+  
+  const paidBills = bills.filter(bill => bill.paid);
+  const unpaidBills = bills.filter(bill => !bill.paid);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
   };
 
   const filteredBills = bills.filter((bill) => {
-    return bill.customerName.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = bill.customerName.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (selectedTab === 'all') return matchesSearch;
+    if (selectedTab === 'paid') return matchesSearch && bill.paid;
+    if (selectedTab === 'unpaid') return matchesSearch && !bill.paid;
+    
+    return matchesSearch;
   });
 
   const handleAddItem = () => {
@@ -87,11 +101,16 @@ const Billing = () => {
     updateBillItemQuantity(medicineId, newQuantity);
   };
 
-  const calculateTotal = () => {
+  const calculateSubtotal = () => {
     return currentBill.items.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
+  };
+
+  const calculateTotal = () => {
+    const subtotal = calculateSubtotal();
+    return Math.max(0, subtotal - currentBill.discountAmount);
   };
 
   const handleBillClick = (bill: Bill) => {
@@ -100,30 +119,28 @@ const Billing = () => {
   };
 
   const handleGenerateBill = async () => {
-    const billId = await generateBill();
-    if (billId) {
-      const newBill = bills.find(b => b.id === billId);
-      if (newBill) {
-        setBillToPay(newBill);
-        setIsPaymentModalOpen(true);
-      }
-    }
+    setIsPaidBillDialogOpen(true);
   };
 
-  const handlePaymentComplete = async (success: boolean) => {
-    if (success && billToPay) {
-      await updateBill({
-        ...billToPay,
-        paid: true
-      });
-    }
+  const confirmGenerateBill = async (isPaid: boolean) => {
+    setIsPaidBillDialogOpen(false);
+    await generateBill(isPaid);
+  };
+
+  const handleMarkAsPaid = async (bill: Bill) => {
+    await updateBill({
+      ...bill,
+      paid: true
+    });
     
-    setBillToPay(null);
-  };
-
-  const handlePayBill = (bill: Bill) => {
-    setBillToPay(bill);
-    setIsPaymentModalOpen(true);
+    toast({
+      title: "Bill Updated",
+      description: "Bill has been marked as paid.",
+    });
+    
+    if (isViewBillOpen) {
+      setIsViewBillOpen(false);
+    }
   };
 
   const printBill = (bill: Bill) => {
@@ -183,6 +200,9 @@ const Billing = () => {
         </table>
         
         <div class="total">
+          ${bill.discountAmount > 0 ? 
+            `<p>Subtotal: ₹${(bill.totalAmount + bill.discountAmount).toFixed(2)}</p>
+             <p>Discount: ₹${bill.discountAmount.toFixed(2)}</p>` : ''}
           <p>Total Amount: ₹${bill.totalAmount.toFixed(2)}</p>
           <p>Status: ${bill.paid ? 'Paid' : 'Unpaid'}</p>
         </div>
@@ -198,6 +218,58 @@ const Billing = () => {
     printWindow.document.write(content);
     printWindow.document.close();
     printWindow.print();
+  };
+
+  const handleCustomerSearch = async (value: string) => {
+    setCustomerSearchTerm(value);
+    setCustomerName(value);
+    
+    if (value.length < 2) {
+      setCustomerSuggestions([]);
+      setCustomerId(undefined);
+      return;
+    }
+    
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .ilike('name', `%${value}%`)
+        .limit(5);
+      
+      if (error) throw error;
+      
+      const formattedCustomers = data.map(customer => ({
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        visitCount: customer.visit_count,
+        totalSpent: Number(customer.total_spent),
+        lastVisit: customer.last_visit,
+        createdAt: customer.created_at,
+      }));
+      
+      setCustomerSuggestions(formattedCustomers);
+    } catch (error) {
+      console.error('Error searching for customers:', error);
+      setCustomerSuggestions([]);
+    }
+  };
+
+  const selectCustomer = (customer: Customer) => {
+    setCustomerName(customer.name);
+    setCustomerId(customer.id);
+    setCustomerSuggestions([]);
+    setCustomerSearchTerm('');
+    
+    // If customer has more than 5 visits, suggest a discount
+    if (customer.visitCount > 5) {
+      toast({
+        title: "Frequent Customer",
+        description: `${customer.name} is a frequent customer with ${customer.visitCount} visits. Consider offering a discount.`,
+      });
+    }
   };
 
   if (isLoading) {
@@ -217,21 +289,38 @@ const Billing = () => {
         <h1 className="text-2xl font-bold">Billing System</h1>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Create New Bill</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div>
+              <div className="relative">
                 <Label htmlFor="customerName">Customer Name</Label>
                 <Input
                   id="customerName"
-                  value={currentBill.customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Enter customer name"
+                  value={customerSearchTerm || currentBill.customerName}
+                  onChange={(e) => handleCustomerSearch(e.target.value)}
+                  placeholder="Enter or search customer name"
                 />
+                
+                {customerSuggestions.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg">
+                    {customerSuggestions.map((customer) => (
+                      <div
+                        key={customer.id}
+                        className="px-4 py-2 hover:bg-muted cursor-pointer flex justify-between"
+                        onClick={() => selectCustomer(customer)}
+                      >
+                        <span>{customer.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          Visits: {customer.visitCount}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               
               <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
@@ -255,14 +344,35 @@ const Billing = () => {
                 </div>
                 
                 <div className="w-full sm:w-24">
-                  <Label htmlFor="quantity">Quantity</Label>
-                  <Input
-                    id="quantity"
-                    type="number"
-                    min="1"
-                    value={quantity}
-                    onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                  />
+                  <Label htmlFor="quantity">Qty</Label>
+                  <div className="flex items-center">
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="icon"
+                      className="h-10 w-10 rounded-r-none"
+                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                    >
+                      -
+                    </Button>
+                    <Input
+                      id="quantity"
+                      type="number"
+                      min="1"
+                      value={quantity}
+                      onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                      className="h-10 rounded-none text-center"
+                    />
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="icon"
+                      className="h-10 w-10 rounded-l-none"
+                      onClick={() => setQuantity(quantity + 1)}
+                    >
+                      +
+                    </Button>
+                  </div>
                 </div>
                 
                 <div className="self-end">
@@ -339,6 +449,26 @@ const Billing = () => {
                 )}
               </div>
               
+              {currentBill.items.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label htmlFor="discount">Discount Amount</Label>
+                    <div className="text-sm text-muted-foreground">
+                      Subtotal: ₹{calculateSubtotal().toFixed(2)}
+                    </div>
+                  </div>
+                  <Input
+                    id="discount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={currentBill.discountAmount}
+                    onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                    placeholder="Enter discount amount"
+                  />
+                </div>
+              )}
+              
               <div className="flex justify-between items-center pt-2">
                 <div className="text-lg font-bold">
                   Total: ₹{calculateTotal().toFixed(2)}
@@ -373,76 +503,40 @@ const Billing = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="border rounded-md max-h-[450px] overflow-y-auto">
-              {filteredBills.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                      <TableHead className="text-center">Status</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredBills.map((bill) => (
-                      <TableRow key={bill.id}>
-                        <TableCell>{bill.customerName}</TableCell>
-                        <TableCell>
-                          {new Date(bill.date).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          ₹{bill.totalAmount.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs ${
-                              bill.paid
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            {bill.paid ? 'Paid' : 'Unpaid'}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex space-x-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleBillClick(bill)}
-                            >
-                              <FileText className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => printBill(bill)}
-                            >
-                              <Printer className="h-4 w-4" />
-                            </Button>
-                            {!bill.paid && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handlePayBill(bill)}
-                              >
-                                <CreditCard className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <div className="p-4 text-center text-muted-foreground">
-                  No bills found
-                </div>
-              )}
-            </div>
+            <Tabs defaultValue="all" className="w-full" onValueChange={setSelectedTab}>
+              <TabsList className="grid w-full grid-cols-3 mb-4">
+                <TabsTrigger value="all">All Bills ({bills.length})</TabsTrigger>
+                <TabsTrigger value="paid">Paid ({paidBills.length})</TabsTrigger>
+                <TabsTrigger value="unpaid">Unpaid ({unpaidBills.length})</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="all" className="mt-0">
+                <BillsList
+                  bills={filteredBills}
+                  onBillClick={handleBillClick}
+                  onPrintBill={printBill}
+                  onMarkAsPaid={handleMarkAsPaid}
+                />
+              </TabsContent>
+              
+              <TabsContent value="paid" className="mt-0">
+                <BillsList
+                  bills={filteredBills.filter(bill => bill.paid)}
+                  onBillClick={handleBillClick}
+                  onPrintBill={printBill}
+                  onMarkAsPaid={handleMarkAsPaid}
+                />
+              </TabsContent>
+              
+              <TabsContent value="unpaid" className="mt-0">
+                <BillsList
+                  bills={filteredBills.filter(bill => !bill.paid)}
+                  onBillClick={handleBillClick}
+                  onPrintBill={printBill}
+                  onMarkAsPaid={handleMarkAsPaid}
+                />
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>
@@ -506,6 +600,17 @@ const Billing = () => {
                 </TableBody>
               </Table>
               
+              {selectedBill.discountAmount > 0 && (
+                <div className="text-right space-y-1">
+                  <p className="text-sm text-muted-foreground">
+                    Subtotal: ₹{(selectedBill.totalAmount + selectedBill.discountAmount).toFixed(2)}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Discount: ₹{selectedBill.discountAmount.toFixed(2)}
+                  </p>
+                </div>
+              )}
+              
               <div className="flex justify-between items-center pt-2">
                 <div className="text-lg font-bold">
                   Total: ₹{selectedBill.totalAmount.toFixed(2)}
@@ -518,12 +623,8 @@ const Billing = () => {
                     <Printer className="h-4 w-4 mr-1" /> Print
                   </Button>
                   {!selectedBill.paid && (
-                    <Button onClick={() => {
-                      setIsViewBillOpen(false);
-                      setBillToPay(selectedBill);
-                      setIsPaymentModalOpen(true);
-                    }}>
-                      <CreditCard className="h-4 w-4 mr-1" /> Pay Now
+                    <Button onClick={() => handleMarkAsPaid(selectedBill)}>
+                      Mark as Paid
                     </Button>
                   )}
                 </div>
@@ -533,14 +634,114 @@ const Billing = () => {
         </DialogContent>
       </Dialog>
       
-      {billToPay && (
-        <PaymentModal
-          open={isPaymentModalOpen}
-          onOpenChange={setIsPaymentModalOpen}
-          totalAmount={billToPay.totalAmount}
-          onPaymentComplete={handlePaymentComplete}
-          onProcessPayment={processBillPayment}
-        />
+      <Dialog open={isPaidBillDialogOpen} onOpenChange={setIsPaidBillDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Payment Status</DialogTitle>
+            <DialogDescription>
+              Is this bill being paid now or will it be paid later?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-between flex-col-reverse sm:flex-row gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => confirmGenerateBill(false)}
+            >
+              Unpaid (Pay Later)
+            </Button>
+            <Button 
+              onClick={() => confirmGenerateBill(true)}
+            >
+              Paid
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+// Bills list component
+const BillsList = ({ 
+  bills, 
+  onBillClick, 
+  onPrintBill, 
+  onMarkAsPaid 
+}: { 
+  bills: Bill[]; 
+  onBillClick: (bill: Bill) => void;
+  onPrintBill: (bill: Bill) => void;
+  onMarkAsPaid: (bill: Bill) => void;
+}) => {
+  return (
+    <div className="border rounded-md max-h-[450px] overflow-y-auto">
+      {bills.length > 0 ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Customer</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
+              <TableHead className="text-center">Status</TableHead>
+              <TableHead></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {bills.map((bill) => (
+              <TableRow key={bill.id}>
+                <TableCell>{bill.customerName}</TableCell>
+                <TableCell>
+                  {new Date(bill.date).toLocaleDateString()}
+                </TableCell>
+                <TableCell className="text-right">
+                  ₹{bill.totalAmount.toFixed(2)}
+                </TableCell>
+                <TableCell className="text-center">
+                  <span
+                    className={`px-2 py-1 rounded-full text-xs ${
+                      bill.paid
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-amber-100 text-amber-800'
+                    }`}
+                  >
+                    {bill.paid ? 'Paid' : 'Unpaid'}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <div className="flex space-x-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onBillClick(bill)}
+                    >
+                      <FileText className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onPrintBill(bill)}
+                    >
+                      <Printer className="h-4 w-4" />
+                    </Button>
+                    {!bill.paid && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onMarkAsPaid(bill)}
+                      >
+                        Pay
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <div className="p-4 text-center text-muted-foreground">
+          No bills found
+        </div>
       )}
     </div>
   );

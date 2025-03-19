@@ -54,27 +54,74 @@ export type Database = {
       bills: {
         Row: {
           created_at: string
+          customer_id: string | null
           customer_name: string
           date: string
+          discount_amount: number | null
           id: string
           paid: boolean
           total_amount: number
         }
         Insert: {
           created_at?: string
+          customer_id?: string | null
           customer_name: string
           date?: string
+          discount_amount?: number | null
           id?: string
           paid?: boolean
           total_amount: number
         }
         Update: {
           created_at?: string
+          customer_id?: string | null
           customer_name?: string
           date?: string
+          discount_amount?: number | null
           id?: string
           paid?: boolean
           total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bills_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customers: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          id: string
+          last_visit: string | null
+          name: string
+          phone: string | null
+          total_spent: number | null
+          visit_count: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          last_visit?: string | null
+          name: string
+          phone?: string | null
+          total_spent?: number | null
+          visit_count?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          last_visit?: string | null
+          name?: string
+          phone?: string | null
+          total_spent?: number | null
+          visit_count?: number | null
         }
         Relationships: []
       }

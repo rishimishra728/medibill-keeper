@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Medicine, Bill, BillItem, PaymentDetails, AppContextType } from '@/types';
-import { v4 as uuidv4 } from 'uuid';
+import { Medicine, Bill, BillItem, Customer, AppContextType } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -9,12 +8,17 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [currentBill, setCurrentBill] = useState<{
     customerName: string;
+    customerId?: string;
     items: BillItem[];
+    discountAmount: number;
   }>({
     customerName: '',
+    customerId: undefined,
     items: [],
+    discountAmount: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -42,6 +46,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }));
         
         setMedicines(formattedMedicines);
+        
+        const { data: customersData, error: customersError } = await supabase
+          .from('customers')
+          .select('*');
+        
+        if (customersError) {
+          throw customersError;
+        }
+        
+        const formattedCustomers = customersData.map(customer => ({
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone,
+          email: customer.email,
+          visitCount: customer.visit_count,
+          totalSpent: Number(customer.total_spent),
+          lastVisit: customer.last_visit,
+          createdAt: customer.created_at,
+        }));
+        
+        setCustomers(formattedCustomers);
         
         const { data: billsData, error: billsError } = await supabase
           .from('bills')
@@ -72,9 +97,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return {
               id: bill.id,
               customerName: bill.customer_name,
+              customerId: bill.customer_id,
               date: bill.date,
               items: formattedItems,
               totalAmount: Number(bill.total_amount),
+              discountAmount: Number(bill.discount_amount || 0),
               paid: bill.paid,
             };
           })
@@ -204,14 +231,122 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const addCustomer = async (customer: Omit<Customer, 'id' | 'visitCount' | 'totalSpent' | 'lastVisit' | 'createdAt'>): Promise<string> => {
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .insert({
+          name: customer.name,
+          phone: customer.phone,
+          email: customer.email,
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      const newCustomer: Customer = {
+        id: data.id,
+        name: data.name,
+        phone: data.phone,
+        email: data.email,
+        visitCount: data.visit_count,
+        totalSpent: Number(data.total_spent),
+        lastVisit: data.last_visit,
+        createdAt: data.created_at,
+      };
+      
+      setCustomers((prev) => [...prev, newCustomer]);
+      
+      toast({
+        title: "Customer Added",
+        description: `${customer.name} has been added to the database.`,
+      });
+      
+      return data.id;
+    } catch (error) {
+      console.error('Error adding customer:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add customer.",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
+  const updateCustomer = async (customer: Customer) => {
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .update({
+          name: customer.name,
+          phone: customer.phone,
+          email: customer.email,
+          visit_count: customer.visitCount,
+          total_spent: customer.totalSpent,
+          last_visit: customer.lastVisit,
+        })
+        .eq('id', customer.id);
+      
+      if (error) throw error;
+      
+      setCustomers((prev) =>
+        prev.map((item) => (item.id === customer.id ? customer : item))
+      );
+      
+      toast({
+        title: "Customer Updated",
+        description: `${customer.name}'s information has been updated.`,
+      });
+    } catch (error) {
+      console.error('Error updating customer:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update customer.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getCustomerByName = async (name: string): Promise<Customer | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .ilike('name', `%${name}%`)
+        .limit(1);
+      
+      if (error) throw error;
+      
+      if (data.length === 0) return null;
+      
+      return {
+        id: data[0].id,
+        name: data[0].name,
+        phone: data[0].phone,
+        email: data[0].email,
+        visitCount: data[0].visit_count,
+        totalSpent: Number(data[0].total_spent),
+        lastVisit: data[0].last_visit,
+        createdAt: data[0].created_at,
+      };
+    } catch (error) {
+      console.error('Error finding customer:', error);
+      return null;
+    }
+  };
+
   const addBill = async (bill: Omit<Bill, 'id'>): Promise<string | undefined> => {
     try {
       const { data: billData, error: billError } = await supabase
         .from('bills')
         .insert({
           customer_name: bill.customerName,
+          customer_id: bill.customerId,
           date: bill.date,
           total_amount: bill.totalAmount,
+          discount_amount: bill.discountAmount,
           paid: bill.paid,
         })
         .select()
@@ -232,12 +367,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       
       if (itemsError) throw itemsError;
       
+      if (bill.customerId) {
+        const customer = customers.find(c => c.id === bill.customerId);
+        if (customer) {
+          const updatedCustomer = {
+            ...customer,
+            visitCount: customer.visitCount + 1,
+            totalSpent: customer.totalSpent + bill.totalAmount,
+            lastVisit: bill.date,
+          };
+          
+          await updateCustomer(updatedCustomer);
+        }
+      }
+      
       const newBill: Bill = {
         id: billData.id,
         customerName: billData.customer_name,
+        customerId: billData.customer_id,
         date: billData.date,
         items: bill.items,
         totalAmount: Number(billData.total_amount),
+        discountAmount: Number(billData.discount_amount),
         paid: billData.paid,
       };
       
@@ -268,6 +419,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           customer_name: bill.customerName,
           date: bill.date,
           total_amount: bill.totalAmount,
+          discount_amount: bill.discountAmount,
           paid: bill.paid,
         })
         .eq('id', bill.id);
@@ -322,6 +474,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setCustomerName = (name: string) => {
     setCurrentBill((prev) => ({ ...prev, customerName: name }));
+  };
+
+  const setCustomerId = (id: string | undefined) => {
+    setCurrentBill((prev) => ({ ...prev, customerId: id }));
+  };
+
+  const setDiscountAmount = (amount: number) => {
+    setCurrentBill((prev) => ({ ...prev, discountAmount: amount }));
   };
 
   const addItemToBill = (item: Omit<BillItem, 'medicineName'>) => {
@@ -421,34 +581,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const clearCurrentBill = () => {
     setCurrentBill({
       customerName: '',
+      customerId: undefined,
       items: [],
+      discountAmount: 0,
     });
   };
 
-  const processBillPayment = async (paymentDetails: PaymentDetails): Promise<boolean> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const isSuccessful = Math.random() < 0.9;
-        
-        if (isSuccessful) {
-          toast({
-            title: "Payment Successful",
-            description: "Your payment has been processed successfully.",
-          });
-        } else {
-          toast({
-            title: "Payment Failed",
-            description: "Your payment could not be processed. Please try again.",
-            variant: "destructive",
-          });
-        }
-        
-        resolve(isSuccessful);
-      }, 1500);
-    });
-  };
-
-  const generateBill = async (): Promise<string | undefined> => {
+  const generateBill = async (isPaid: boolean): Promise<string | undefined> => {
     if (!currentBill.customerName) {
       toast({
         title: "Error",
@@ -467,17 +606,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return undefined;
     }
     
-    const totalAmount = currentBill.items.reduce(
+    let customerId = currentBill.customerId;
+    
+    if (!customerId && currentBill.customerName) {
+      const existingCustomer = await getCustomerByName(currentBill.customerName);
+      
+      if (existingCustomer) {
+        customerId = existingCustomer.id;
+      } else {
+        try {
+          customerId = await addCustomer({ name: currentBill.customerName });
+        } catch (error) {
+          console.error('Error creating customer:', error);
+        }
+      }
+    }
+    
+    const totalBeforeDiscount = currentBill.items.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
     
+    const totalAmount = Math.max(0, totalBeforeDiscount - currentBill.discountAmount);
+    
     const newBill: Omit<Bill, 'id'> = {
       customerName: currentBill.customerName,
+      customerId,
       date: new Date().toISOString(),
       items: currentBill.items,
       totalAmount,
-      paid: false,
+      discountAmount: currentBill.discountAmount,
+      paid: isPaid,
     };
     
     const billId = await addBill(newBill);
@@ -512,6 +671,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const getTopCustomers = (limit = 5) => {
+    return customers
+      .sort((a, b) => b.totalSpent - a.totalSpent)
+      .slice(0, limit);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -525,17 +690,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateBill,
         deleteBill,
         
+        customers,
+        addCustomer,
+        updateCustomer,
+        getCustomerByName,
+        
         currentBill,
         setCustomerName,
+        setCustomerId,
+        setDiscountAmount,
         addItemToBill,
         removeItemFromBill,
         updateBillItemQuantity,
         clearCurrentBill,
         generateBill,
-        processBillPayment,
         
         getLowStockMedicines,
         getExpiringMedicines,
+        getTopCustomers,
         
         isLoading,
       }}

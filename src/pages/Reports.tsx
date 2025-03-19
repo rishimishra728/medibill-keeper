@@ -16,6 +16,7 @@ import {
   Inbox,
   AlertTriangle,
   Clock,
+  Users,
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -30,9 +31,10 @@ import {
   Cell,
   Legend
 } from 'recharts';
+import CustomerAnalytics from '@/components/CustomerAnalytics';
 
 const Reports = () => {
-  const { medicines, bills } = useAppContext();
+  const { medicines, bills, customers } = useAppContext();
 
   // Calculate total sales
   const totalSales = bills.reduce((sum, bill) => sum + bill.totalAmount, 0);
@@ -82,7 +84,7 @@ const Reports = () => {
   });
   
   const pieChartData = Object.entries(categoryData).map(([category, count]) => ({
-    name: category,
+    name: category || 'Uncategorized',
     value: count,
   }));
   
@@ -90,11 +92,12 @@ const Reports = () => {
   const stockValueByCategory: Record<string, number> = {};
   
   medicines.forEach(medicine => {
-    if (!stockValueByCategory[medicine.category]) {
-      stockValueByCategory[medicine.category] = 0;
+    const category = medicine.category || 'Uncategorized';
+    if (!stockValueByCategory[category]) {
+      stockValueByCategory[category] = 0;
     }
     
-    stockValueByCategory[medicine.category] += medicine.price * medicine.stock;
+    stockValueByCategory[category] += medicine.price * medicine.stock;
   });
   
   const barChartData = Object.entries(stockValueByCategory)
@@ -153,15 +156,13 @@ const Reports = () => {
         
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-red-500" />
+            <CardTitle className="text-sm font-medium">Customers</CardTitle>
+            <Users className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {medicines.filter(m => m.stock <= 10).length}
-            </div>
+            <div className="text-2xl font-bold">{customers.length}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              Need to be restocked
+              Registered customers
             </p>
           </CardContent>
         </Card>
@@ -226,39 +227,43 @@ const Reports = () => {
         </Card>
       </div>
       
-      <Card>
-        <CardHeader>
-          <CardTitle>Top Selling Medicines</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Medicine Name</TableHead>
-                <TableHead className="text-right">Units Sold</TableHead>
-                <TableHead className="text-right">Revenue</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {topSellingMedicines.length > 0 ? (
-                topSellingMedicines.map((medicine) => (
-                  <TableRow key={medicine.id}>
-                    <TableCell className="font-medium">{medicine.name}</TableCell>
-                    <TableCell className="text-right">{medicine.count}</TableCell>
-                    <TableCell className="text-right">₹{medicine.revenue.toFixed(2)}</TableCell>
-                  </TableRow>
-                ))
-              ) : (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Top Selling Medicines</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center py-4 text-muted-foreground">
-                    No sales data available
-                  </TableCell>
+                  <TableHead>Medicine Name</TableHead>
+                  <TableHead className="text-right">Units Sold</TableHead>
+                  <TableHead className="text-right">Revenue</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {topSellingMedicines.length > 0 ? (
+                  topSellingMedicines.map((medicine) => (
+                    <TableRow key={medicine.id}>
+                      <TableCell className="font-medium">{medicine.name}</TableCell>
+                      <TableCell className="text-right">{medicine.count}</TableCell>
+                      <TableCell className="text-right">₹{medicine.revenue.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center py-4 text-muted-foreground">
+                      No sales data available
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+        
+        <CustomerAnalytics />
+      </div>
     </div>
   );
 };
